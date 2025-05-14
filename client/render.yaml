@@ -4,9 +4,6 @@ services:
     plan: free
     buildCommand: |
       cd client && 
-      npm install && 
+      npm install --legacy-peer-deps && 
       npm run build
     staticPublishPath: ./client/build
-    envVars:
-      - key: NODE_ENV
-        value: production
