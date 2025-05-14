@@ -1,14 +1,12 @@
 services:
-  - type: web
-    name: p2p-file-share-client
-    plan: free  # Remove for production
-    env: node
-    buildCommand: npm install && npm run build
-    startCommand: npm run serve
-    staticPublishPath: ./build
+  - type: static
+    name: sharemelol
+    plan: free
+    buildCommand: |
+      cd client && 
+      npm install && 
+      npm run build
+    staticPublishPath: ./client/build
     envVars:
       - key: NODE_ENV
         value: production
-      # Add your custom vars:
-      - key: REACT_APP_API_URL
-        value: https://sharefast-stvc.onrender.com
