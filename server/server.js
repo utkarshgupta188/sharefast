@@ -1,34 +1,64 @@
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
 const app = express();
 
-// Enable CORS for WebRTC connections
+// Middleware
+app.use(express.json());
 app.use(cors({
-  origin: '*' // In production, specify your frontend URL
+  origin: process.env.FRONTEND_URL || '*',
+  methods: ['GET', 'POST']
 }));
 
-// Signaling server for WebRTC (simplified)
+// In-memory store for OTPs (use Redis in production)
 const connections = new Map();
 
+// Generate OTP endpoint
 app.get('/api/otp', (req, res) => {
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  connections.set(otp, { peers: [] });
-  res.json({ otp });
-});
-
-// WebSocket would be better for production (using ws library)
-app.post('/api/connect', express.json(), (req, res) => {
-  const { otp } = req.body;
-  if (connections.has(otp)) {
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ error: 'Invalid OTP' });
+  try {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    connections.set(otp, { 
+      peers: [],
+      createdAt: Date.now() 
+    });
+    
+    // Cleanup old OTPs (optional)
+    cleanupExpiredOtps();
+    
+    res.json({ otp });
+  } catch (error) {
+    console.error('OTP generation error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// OTP verification endpoint
+app.post('/api/connect', (req, res) => {
+  try {
+    const { otp } = req.body;
+    
+    if (!otp || otp.length !== 6) {
+      return res.status(400).json({ error: 'Invalid OTP format' });
+    }
+
+    if (connections.has(otp)) {
+      return res.json({ success: true });
+    }
+
+    res.status(404).json({ error: 'Invalid OTP' });
+  } catch (error) {
+    console.error('Connection error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
+
+// Helper function to clean expired OTPs
+function cleanupExpiredOtps() {
+  const now = Date.now();
+  const expiryTime = 15 * 60 * 1000; // 15 minutes
+  
+  for (const [otp, data] of connections) {
+    if (now - data.createdAt > expiryTime) {
+      connections.delete(otp);
+    }
+  }
+}
