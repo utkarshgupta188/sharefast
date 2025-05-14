@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
+// Required for Render health checks
+app.use(require('express-status-monitor')());
+
 // Middleware
 app.use(express.json());
 app.use(cors({
@@ -9,56 +12,37 @@ app.use(cors({
   methods: ['GET', 'POST']
 }));
 
-// In-memory store for OTPs (use Redis in production)
+// In-memory store
 const connections = new Map();
 
 // Generate OTP endpoint
 app.get('/api/otp', (req, res) => {
-  try {
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    connections.set(otp, { 
-      peers: [],
-      createdAt: Date.now() 
-    });
-    
-    // Cleanup old OTPs (optional)
-    cleanupExpiredOtps();
-    
-    res.json({ otp });
-  } catch (error) {
-    console.error('OTP generation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  connections.set(otp, { peers: [], createdAt: Date.now() });
+  res.json({ otp });
 });
 
-// OTP verification endpoint
+// Verify OTP endpoint
 app.post('/api/connect', (req, res) => {
-  try {
-    const { otp } = req.body;
-    
-    if (!otp || otp.length !== 6) {
-      return res.status(400).json({ error: 'Invalid OTP format' });
-    }
-
-    if (connections.has(otp)) {
-      return res.json({ success: true });
-    }
-
-    res.status(404).json({ error: 'Invalid OTP' });
-  } catch (error) {
-    console.error('Connection error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const { otp } = req.body;
+  res.json({ valid: connections.has(otp) });
 });
 
-// Helper function to clean expired OTPs
-function cleanupExpiredOtps() {
-  const now = Date.now();
-  const expiryTime = 15 * 60 * 1000; // 15 minutes
-  
-  for (const [otp, data] of connections) {
-    if (now - data.createdAt > expiryTime) {
-      connections.delete(otp);
-    }
-  }
-}
+// Render requires this exact health check endpoint
+app.get('/health', (req, res) => {
+  res.sendStatus(200);
+});
+
+// Critical fix: Must bind to Render's provided PORT
+const PORT = process.env.PORT || 3001;
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Handle shutdown gracefully
+process.on('SIGTERM', () => {
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+});
